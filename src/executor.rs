@@ -165,6 +165,14 @@ impl Reactor {
             }
         }
     }
+
+    fn unique_token(&self) -> Token {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        static CURRENT_TOKEN: AtomicUsize = AtomicUsize::new(0);
+
+        Token(CURRENT_TOKEN.fetch_add(1, Ordering::Relaxed))
+    }
 }
 
 fn run(mut poll: mio::Poll) -> ! {
@@ -195,15 +203,13 @@ pub struct UdpSocket {
 
 impl UdpSocket {
     pub fn bind(addr: impl ToSocketAddrs) -> std::io::Result<Self> {
-        use std::sync::atomic::{AtomicUsize, Ordering};
-
         let std_socket = std::net::UdpSocket::bind(addr)?;
         std_socket.set_nonblocking(true)?;
 
-        static CURRENT_TOKEN: AtomicUsize = AtomicUsize::new(0);
-        let token = Token(CURRENT_TOKEN.fetch_add(1, Ordering::Relaxed));
-
         let mut socket = mio::net::UdpSocket::from_std(std_socket);
+
+        let reactor = Reactor::get();
+        let token = reactor.unique_token();
 
         Reactor::get().registry.register(
             &mut socket,
